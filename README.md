@@ -59,8 +59,8 @@ Variables de entorno:
 
 - [x] Tarea 1 — Estructura del proyecto, `.gitignore`, `.env.example`, `go.mod`, README.
 - [x] Tarea 2 — `cmd/extract`: stdlib (Go 1.26.5) → `data/stdlib_docs.jsonl` (6.246 símbolos / 175 paquetes).
-- [ ] Tarea 3 — Estrategia de chunking.
-- [ ] Tarea 4 — `cmd/ingest`: embeddings + carga a Qdrant.
+- [x] Tarea 3 — Estrategia de chunking: por símbolo (1 símbolo = 1 chunk = 1 vector).
+- [x] Tarea 4 — `cmd/ingest`: embeddings (Jina v3) + carga a Qdrant (6.246 puntos, validado con ingesta real).
 - [ ] Tarea 5 — `cmd/query`: CLI de consulta.
 
 ## Licencia / uso
