@@ -20,7 +20,7 @@ Uso personal, no comercial.
 
 | Componente   | Elección                          | Notas                                       |
 |--------------|-----------------------------------|---------------------------------------------|
-| Lenguaje     | Go 1.24                           | Fuente de la doc: `$GOROOT/src` local       |
+| Lenguaje     | Go 1.24 (proyecto)                | Doc extraída con Go **1.26.5** (última estable) |
 | Embeddings   | Jina AI (`jina-embeddings-v3`)    | Free tier 1M tokens, contexto 8K            |
 | Vector DB    | Qdrant Cloud                      | Free tier (1GB RAM / 4GB disco)             |
 
@@ -58,7 +58,7 @@ Variables de entorno:
 🚧 En construcción. Ver el avance por tareas:
 
 - [x] Tarea 1 — Estructura del proyecto, `.gitignore`, `.env.example`, `go.mod`, README.
-- [ ] Tarea 2 — `cmd/extract`: stdlib → `data/stdlib_docs.jsonl`.
+- [x] Tarea 2 — `cmd/extract`: stdlib (Go 1.26.5) → `data/stdlib_docs.jsonl` (6.246 símbolos / 175 paquetes).
 - [ ] Tarea 3 — Estrategia de chunking.
 - [ ] Tarea 4 — `cmd/ingest`: embeddings + carga a Qdrant.
 - [ ] Tarea 5 — `cmd/query`: CLI de consulta.
