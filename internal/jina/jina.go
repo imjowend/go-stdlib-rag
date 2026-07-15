@@ -18,9 +18,11 @@ const (
 	endpoint = "https://api.jina.ai/v1/embeddings"
 	model    = "jina-embeddings-v3"
 
-	// Task types for asymmetric retrieval (v3 LoRA adapters).
-	TaskPassage = "retrieval.passage" // for indexing documents
-	TaskQuery   = "retrieval.query"   // for the search query
+	// TaskPassage is the task type for indexing documents (asymmetric retrieval).
+	TaskPassage = "retrieval.passage"
+
+	// TaskQuery is the task type for the search query (asymmetric retrieval).
+	TaskQuery = "retrieval.query"
 
 	// Dim is the default output dimension of jina-embeddings-v3.
 	Dim = 1024

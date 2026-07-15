@@ -159,6 +159,7 @@ func buildFilter(pkg, kind string, hasExample bool) map[string]any {
 	return map[string]any{"must": must}
 }
 
+// printResults outputs the search results to stdout in a human-readable format.
 func printResults(question string, results []qdrant.SearchResult, examples map[string][]docmodel.Example) {
 	fmt.Printf("Query: %s\n%d results\n\n", question, len(results))
 	if len(results) == 0 {
@@ -200,6 +201,7 @@ func printResults(question string, results []qdrant.SearchResult, examples map[s
 	}
 }
 
+// printJSON outputs the search results to stdout as a JSON array.
 func printJSON(results []qdrant.SearchResult, examples map[string][]docmodel.Example) {
 	type hit struct {
 		ID       string             `json:"id"`
@@ -246,6 +248,7 @@ func capLines(s string, max int) string {
 	return strings.Join(lines[:max], "\n") + "\n... (truncated)"
 }
 
+// str extracts a string value from the metadata map.
 func str(m map[string]any, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
@@ -253,6 +256,7 @@ func str(m map[string]any, key string) string {
 	return ""
 }
 
+// boolv extracts a boolean value from the metadata map.
 func boolv(m map[string]any, key string) bool {
 	v, _ := m[key].(bool)
 	return v

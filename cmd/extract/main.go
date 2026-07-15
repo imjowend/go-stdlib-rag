@@ -85,6 +85,7 @@ func main() {
 	log.Printf("done: %d symbols from %d packages -> %s", totalSymbols, totalPkgs, *out)
 }
 
+// pkgDir represents a parsed Go package directory.
 type pkgDir struct {
 	dir        string // absolute directory
 	importPath string // import path relative to src
@@ -134,6 +135,7 @@ func findPackageDirs(srcDir string) ([]pkgDir, error) {
 	return dirs, nil
 }
 
+// dirHasGoFiles reports whether the directory contains buildable non-test Go files.
 func dirHasGoFiles(dir string) (bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -284,6 +286,7 @@ func renderNode(fset *token.FileSet, node ast.Node) string {
 	return buf.String()
 }
 
+// convertExamples transforms go/doc examples into the docmodel.Example format.
 func convertExamples(fset *token.FileSet, exs []*doc.Example) []docmodel.Example {
 	if len(exs) == 0 {
 		return nil

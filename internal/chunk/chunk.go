@@ -83,10 +83,10 @@ func render(s docmodel.Symbol, signature string) string {
 	return b.String()
 }
 
-// Payload is the metadata stored alongside each vector in Qdrant. package,
-// symbol_name, kind and has_example are used for filtering in queries; recv,
-// signature and doc are stored so query results can be displayed without
-// re-reading the JSONL.
+// Payload returns the metadata stored alongside each vector in Qdrant.
+// The fields package, symbol_name, kind, and has_example are used for
+// filtering in queries; recv, signature, and doc are stored so query
+// results can be displayed without re-reading the JSONL.
 func Payload(s docmodel.Symbol) map[string]any {
 	return map[string]any{
 		"package":     s.Package,

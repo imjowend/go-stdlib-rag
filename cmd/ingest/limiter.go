@@ -11,11 +11,13 @@ type limiter struct {
 	events   []event
 }
 
+// event represents a request made at a specific time, costing N tokens.
 type event struct {
 	at     time.Time
 	tokens int
 }
 
+// newLimiter returns a new rate limiter for the given TPM and RPM.
 func newLimiter(tpm, rpm int) *limiter {
 	return &limiter{tpm: tpm, rpm: rpm}
 }
