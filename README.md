@@ -53,6 +53,21 @@ Variables de entorno:
 - `QDRANT_URL` — endpoint del cluster de Qdrant Cloud.
 - `QDRANT_API_KEY` — API key del cluster de Qdrant Cloud.
 
+## Uso
+
+```bash
+# Consultar (pregunta por argumento o por stdin)
+go run ./cmd/query "cómo uso context.WithTimeout"
+
+# Con filtros opcionales por metadata y cantidad de resultados
+go run ./cmd/query -k 3 -package context -kind func -has-example "timeout"
+```
+
+> **Nota:** `cmd/query` lee `data/stdlib_docs.jsonl` (local, **no versionado** —
+> está en `.gitignore`) para mostrar los ejemplos runnable en los resultados.
+> Si el archivo no existe, `cmd/query` falla con un error claro; regeneralo con
+> `go1.26.5 run ./cmd/extract`.
+
 ## Estado
 
 🚧 En construcción. Ver el avance por tareas:
@@ -61,7 +76,7 @@ Variables de entorno:
 - [x] Tarea 2 — `cmd/extract`: stdlib (Go 1.26.5) → `data/stdlib_docs.jsonl` (6.246 símbolos / 175 paquetes).
 - [x] Tarea 3 — Estrategia de chunking: por símbolo (1 símbolo = 1 chunk = 1 vector).
 - [x] Tarea 4 — `cmd/ingest`: embeddings (Jina v3) + carga a Qdrant (6.246 puntos, validado con ingesta real).
-- [ ] Tarea 5 — `cmd/query`: CLI de consulta.
+- [x] Tarea 5 — `cmd/query`: CLI de consulta (embed query con Jina, búsqueda top-K en Qdrant, filtros por payload).
 
 ## Licencia / uso
 

@@ -63,6 +63,49 @@ func (c *Client) EnsureCollection(ctx context.Context, name string, dim int) (cr
 	return true, nil
 }
 
+// EnsurePayloadIndex makes sure a payload index exists for each requested
+// field (field name -> Qdrant field schema, e.g. "keyword" or "bool").
+//
+// It first GETs the collection and inspects its payload_schema, then creates
+// ONLY the missing indexes. In steady state (all present) it costs a single
+// GET and no writes. Payload indexes are required to filter on those fields
+// because Qdrant Cloud enables strict mode (unindexed_filtering_retrieve=false).
+// It returns the names of the fields it actually created.
+func (c *Client) EnsurePayloadIndex(ctx context.Context, name string, fields map[string]string) ([]string, error) {
+	status, body, err := c.do(ctx, http.MethodGet, "/collections/"+name, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("get collection %d: %s", status, truncate(body))
+	}
+	var info struct {
+		Result struct {
+			PayloadSchema map[string]json.RawMessage `json:"payload_schema"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
+		return nil, fmt.Errorf("decoding collection info: %w", err)
+	}
+
+	var created []string
+	for field, schema := range fields {
+		if _, ok := info.Result.PayloadSchema[field]; ok {
+			continue // already indexed
+		}
+		reqBody := map[string]any{"field_name": field, "field_schema": schema}
+		st, rb, err := c.do(ctx, http.MethodPut, "/collections/"+name+"/index?wait=true", reqBody)
+		if err != nil {
+			return created, err
+		}
+		if st != http.StatusOK {
+			return created, fmt.Errorf("create index %q %d: %s", field, st, truncate(rb))
+		}
+		created = append(created, field)
+	}
+	return created, nil
+}
+
 // Upsert inserts or updates a batch of points (waiting for the operation to
 // be applied).
 func (c *Client) Upsert(ctx context.Context, name string, points []Point) error {
