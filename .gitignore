@@ -1,0 +1,45 @@
+# ---- Go ----
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.*
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# ---- Compiled command binaries ----
+# Local builds of the CLIs under cmd/
+/extract
+/ingest
+/query
+cmd/extract/extract
+cmd/ingest/ingest
+cmd/query/query
+
+# ---- Secrets / environment ----
+.env
+.env.local
+*.env
+
+# ---- Generated data (RAG output, not versioned) ----
+data/*
+!data/.gitkeep
+
+# ---- Editor / OS ----
+.DS_Store
+.idea/
+.vscode/
+*.swp

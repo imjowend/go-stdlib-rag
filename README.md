@@ -1,0 +1,69 @@
+# go-stdlib-rag
+
+Un sistema **RAG** (Retrieval-Augmented Generation) sobre toda la documentación de la
+**standard library de Go**, para consultarla en un chat propio de pregunta-respuesta.
+Uso personal, no comercial.
+
+## ¿Qué hace?
+
+1. **Extrae** la documentación de la stdlib directamente desde el código fuente de Go
+   (usando `go/doc` y `go/ast` sobre `$GOROOT/src`), generando un `data/stdlib_docs.jsonl`
+   con, por cada símbolo documentado: paquete, tipo (`func`/`type`/`const`/`var`/`method`),
+   firma completa, doc comment y ejemplos runnable (`example_test.go`).
+2. **Genera embeddings** de cada chunk con la API de Jina AI (`jina-embeddings-v3`).
+3. **Almacena** los vectores en Qdrant Cloud con metadata como payload
+   (`package`, `symbol_name`, `kind`) para poder filtrar en las consultas.
+4. **Consulta**: una CLI recibe una pregunta en lenguaje natural, la embebe con Jina,
+   busca en Qdrant y devuelve los fragmentos más relevantes con su origen.
+
+## Stack (costo $0)
+
+| Componente   | Elección                          | Notas                                       |
+|--------------|-----------------------------------|---------------------------------------------|
+| Lenguaje     | Go 1.24                           | Fuente de la doc: `$GOROOT/src` local       |
+| Embeddings   | Jina AI (`jina-embeddings-v3`)    | Free tier 1M tokens, contexto 8K            |
+| Vector DB    | Qdrant Cloud                      | Free tier (1GB RAM / 4GB disco)             |
+
+## Estructura del proyecto
+
+```
+go-stdlib-rag/
+├── .gitignore
+├── .env.example        # plantilla de credenciales (copiar a .env)
+├── go.mod
+├── README.md
+├── cmd/
+│   ├── extract/        # paso 1: extracción stdlib → JSONL
+│   ├── ingest/         # paso 3: embeddings + carga a Qdrant
+│   └── query/          # paso 4: CLI de consulta
+├── internal/           # paquetes compartidos (modelos, clientes Jina/Qdrant)
+└── data/               # output generado (stdlib_docs.jsonl) — no se versiona
+```
+
+## Configuración
+
+```bash
+cp .env.example .env
+# Editá .env con tus credenciales reales de Jina y Qdrant
+```
+
+Variables de entorno:
+
+- `JINA_API_KEY` — API key del free tier de Jina AI.
+- `QDRANT_URL` — endpoint del cluster de Qdrant Cloud.
+- `QDRANT_API_KEY` — API key del cluster de Qdrant Cloud.
+
+## Estado
+
+🚧 En construcción. Ver el avance por tareas:
+
+- [x] Tarea 1 — Estructura del proyecto, `.gitignore`, `.env.example`, `go.mod`, README.
+- [ ] Tarea 2 — `cmd/extract`: stdlib → `data/stdlib_docs.jsonl`.
+- [ ] Tarea 3 — Estrategia de chunking.
+- [ ] Tarea 4 — `cmd/ingest`: embeddings + carga a Qdrant.
+- [ ] Tarea 5 — `cmd/query`: CLI de consulta.
+
+## Licencia / uso
+
+Proyecto personal, no comercial. La documentación de la stdlib de Go es propiedad de
+sus autores bajo la licencia BSD de Go.
