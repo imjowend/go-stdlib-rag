@@ -1,6 +1,7 @@
-// Package qdrant is a minimal client for Qdrant Cloud's REST API, using only
-// the standard library. It supports the operations needed by this project:
-// ensuring a collection exists, upserting points, and vector search.
+// Package qdrant es un cliente mínimo para la API REST de Qdrant Cloud,
+// implementado utilizando únicamente la biblioteca estándar. 
+// Soporta las operaciones requeridas por este proyecto: asegurar que exista
+// la colección, insertar/actualizar vectores (upsert) y búsqueda vectorial.
 package qdrant
 
 import (
@@ -11,16 +12,18 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/imjowend/go-stdlib-rag/internal/rag"
 )
 
-// Client talks to a Qdrant Cloud cluster over REST.
+// Client se comunica con un clúster de Qdrant Cloud a través de REST.
 type Client struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
 }
 
-// New returns a Client for the given cluster URL and API key.
+// New devuelve un nuevo Client inicializado con la URL del clúster y la clave API.
 func New(baseURL, apiKey string) *Client {
 	return &Client{
 		baseURL: baseURL,
@@ -29,15 +32,10 @@ func New(baseURL, apiKey string) *Client {
 	}
 }
 
-// Point is a single vector with its ID and metadata payload.
-type Point struct {
-	ID      string         `json:"id"`
-	Vector  []float32      `json:"vector"`
-	Payload map[string]any `json:"payload"`
-}
+// Note: El cliente Qdrant ahora usa rag.Point en lugar de declarar un tipo Point propio.
 
-// EnsureCollection creates the collection with the given vector dimension and
-// cosine distance if it does not already exist. It is a no-op if present.
+// EnsureCollection crea la colección con la dimensión de vector especificada y
+// métrica de distancia de Coseno si esta no existe. No hace nada si ya existe.
 func (c *Client) EnsureCollection(ctx context.Context, name string, dim int) (created bool, err error) {
 	status, _, err := c.do(ctx, http.MethodGet, "/collections/"+name, nil)
 	if err != nil {
@@ -63,14 +61,14 @@ func (c *Client) EnsureCollection(ctx context.Context, name string, dim int) (cr
 	return true, nil
 }
 
-// EnsurePayloadIndex makes sure a payload index exists for each requested
-// field (field name -> Qdrant field schema, e.g. "keyword" or "bool").
+// EnsurePayloadIndex asegura que exista un índice para cada campo solicitado del payload
+// (nombre de campo -> esquema de campo de Qdrant, p. ej. "keyword" o "bool").
 //
-// It first GETs the collection and inspects its payload_schema, then creates
-// ONLY the missing indexes. In steady state (all present) it costs a single
-// GET and no writes. Payload indexes are required to filter on those fields
-// because Qdrant Cloud enables strict mode (unindexed_filtering_retrieve=false).
-// It returns the names of the fields it actually created.
+// Primero obtiene la colección y revisa su payload_schema, luego crea SOLO los índices faltantes.
+// En un estado estable (donde todos existen) cuesta solo un GET y cero operaciones de escritura.
+// Los índices de payload son obligatorios para filtrar sobre esos campos porque Qdrant Cloud
+// habilita el modo estricto (unindexed_filtering_retrieve=false).
+// Devuelve los nombres de los campos que fueron realmente creados.
 func (c *Client) EnsurePayloadIndex(ctx context.Context, name string, fields map[string]string) ([]string, error) {
 	status, body, err := c.do(ctx, http.MethodGet, "/collections/"+name, nil)
 	if err != nil {
@@ -106,9 +104,9 @@ func (c *Client) EnsurePayloadIndex(ctx context.Context, name string, fields map
 	return created, nil
 }
 
-// Upsert inserts or updates a batch of points (waiting for the operation to
-// be applied).
-func (c *Client) Upsert(ctx context.Context, name string, points []Point) error {
+// Upsert inserta o actualiza un lote de vectores (points),
+// esperando (wait=true) a que la operación se aplique completamente.
+func (c *Client) Upsert(ctx context.Context, name string, points []rag.Point) error {
 	body := map[string]any{"points": points}
 	status, respBody, err := c.do(ctx, http.MethodPut, "/collections/"+name+"/points?wait=true", body)
 	if err != nil {
@@ -120,16 +118,11 @@ func (c *Client) Upsert(ctx context.Context, name string, points []Point) error 
 	return nil
 }
 
-// SearchResult is one hit returned by Search.
-type SearchResult struct {
-	ID      string         `json:"id"`
-	Score   float32        `json:"score"`
-	Payload map[string]any `json:"payload"`
-}
+// Note: El cliente Qdrant ahora usa rag.SearchResult directamente en lugar de su propia versión.
 
-// Search returns the topK nearest points to vector. If filter is non-nil it is
-// passed through as a Qdrant filter object.
-func (c *Client) Search(ctx context.Context, name string, vector []float32, topK int, filter map[string]any) ([]SearchResult, error) {
+// Search devuelve los topK vectores más cercanos al vector proporcionado.
+// Si el filtro no es nulo, este es pasado de forma transparente a Qdrant como objeto de filtro.
+func (c *Client) Search(ctx context.Context, name string, vector []float32, topK int, filter map[string]any) ([]rag.SearchResult, error) {
 	body := map[string]any{
 		"vector":       vector,
 		"limit":        topK,
@@ -146,7 +139,7 @@ func (c *Client) Search(ctx context.Context, name string, vector []float32, topK
 		return nil, fmt.Errorf("search %d: %s", status, truncate(respBody))
 	}
 	var parsed struct {
-		Result []SearchResult `json:"result"`
+		Result []rag.SearchResult `json:"result"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, fmt.Errorf("decoding search response: %w", err)

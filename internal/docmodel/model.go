@@ -1,35 +1,35 @@
-// Package docmodel defines the shared data model for the extracted stdlib
-// documentation. It is used by cmd/extract to write data/stdlib_docs.jsonl
-// and by cmd/ingest / cmd/query to read it back.
+// Package docmodel define el modelo de datos compartido para la documentación
+// extraída de la biblioteca estándar (stdlib). Es utilizado por cmd/extract
+// para escribir data/stdlib_docs.jsonl y por cmd/ingest / cmd/query para leerla.
 package docmodel
 
-// Symbol is one documented, exported stdlib symbol. Each line of
-// data/stdlib_docs.jsonl is one Symbol encoded as JSON.
+// Symbol representa un símbolo exportado y documentado de la stdlib.
+// Cada línea de data/stdlib_docs.jsonl es un Symbol codificado como JSON.
 type Symbol struct {
-	// Package is the import path, e.g. "context" or "net/http".
+	// Package es la ruta de importación, p. ej. "context" o "net/http".
 	Package string `json:"package"`
-	// Kind is one of: func, type, const, var, method.
+	// Kind es uno de los siguientes: func, type, const, var, method.
 	Kind string `json:"kind"`
-	// Name is the symbol name, e.g. "WithTimeout".
+	// Name es el nombre del símbolo, p. ej. "WithTimeout".
 	Name string `json:"name"`
-	// Recv is the receiver type for methods (without the pointer star),
-	// e.g. "Client" for (*Client).Do. Empty for non-methods.
+	// Recv es el tipo del receptor para los métodos (sin el asterisco de puntero),
+	// p. ej. "Client" para (*Client).Do. Estará vacío para símbolos que no sean métodos.
 	Recv string `json:"recv,omitempty"`
-	// Signature is the full declaration rendered from the AST
-	// (function/method bodies stripped).
+	// Signature es la declaración completa generada desde el AST
+	// (sin el cuerpo de las funciones o métodos).
 	Signature string `json:"signature"`
-	// Doc is the associated doc comment, already cleaned by go/doc.
+	// Doc es el comentario de documentación asociado, ya limpiado por go/doc.
 	Doc string `json:"doc"`
-	// Examples holds runnable examples from *_test.go files, if any.
+	// Examples contiene ejemplos ejecutables provenientes de archivos *_test.go, si los hay.
 	Examples []Example `json:"examples,omitempty"`
 }
 
-// Example is a runnable example associated with a symbol or package.
+// Example representa un ejemplo de código ejecutable asociado a un símbolo o paquete.
 type Example struct {
-	// Name is the example suffix, e.g. "WithTimeout" or "" for the base example.
+	// Name es el sufijo del ejemplo, p. ej. "WithTimeout" o vacío "" para el ejemplo base.
 	Name string `json:"name,omitempty"`
-	// Code is the runnable example source.
+	// Code es el código fuente ejecutable del ejemplo.
 	Code string `json:"code"`
-	// Output is the expected output declared via the // Output: comment.
+	// Output es la salida esperada declarada mediante el comentario // Output:
 	Output string `json:"output,omitempty"`
 }

@@ -1,12 +1,14 @@
-// Command extract walks the Go standard library source tree and writes one
-// JSON object per documented, exported symbol to a JSONL file.
+// Comando extract lee el código fuente local de la biblioteca estándar (stdlib)
+// de Go utilizando los paquetes go/parser y go/doc.
+// Extrae los comentarios y ejemplos ejecutables, y escribe cada símbolo
+// (funciones, tipos, constantes) como una línea JSON en data/stdlib_docs.jsonl.
 //
-// It is meant to be run with the Go toolchain whose stdlib you want to
-// document, e.g.:
+// Debe ejecutarse con la misma versión del toolchain de Go que se desea
+// documentar, por ejemplo:
 //
 //	go1.26.5 run ./cmd/extract
 //
-// so that go/doc and go/ast match the source being parsed.
+// El comando localiza GOROOT, rastrea sus subdirectorios y analiza los paquetes.
 package main
 
 import (
@@ -153,8 +155,7 @@ func dirHasGoFiles(dir string) (bool, error) {
 	return false, nil
 }
 
-// extractPackage parses one package directory and returns its documented,
-// exported symbols with examples attached.
+// processPackage utiliza go/doc para extraer toda la información documentada (funciones, tipos, constantes, variables).
 func extractPackage(srcDir string, pd pkgDir) ([]docmodel.Symbol, error) {
 	// Use the default build context to filter files by GOOS/GOARCH and build tags.
 	bpkg, err := build.ImportDir(pd.dir, 0)
@@ -286,7 +287,7 @@ func renderNode(fset *token.FileSet, node ast.Node) string {
 	return buf.String()
 }
 
-// convertExamples transforms go/doc examples into the docmodel.Example format.
+// extractExamples convierte de forma superficial los ejemplos de go/doc en docmodel.Example.
 func convertExamples(fset *token.FileSet, exs []*doc.Example) []docmodel.Example {
 	if len(exs) == 0 {
 		return nil

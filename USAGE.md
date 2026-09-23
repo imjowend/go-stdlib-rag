@@ -8,9 +8,9 @@ Esta guía detalla los requisitos, los pasos para ejecutar el pipeline completo 
    - Instalación: `go install golang.org/dl/go1.26.5@latest && go1.26.5 download`
 2. **Go (Default)**: Cualquier versión moderna de Go (1.21+) para compilar y ejecutar los binarios de ingestión y consulta (`cmd/ingest` y `cmd/query`).
 3. **API Keys y Credenciales**:
-   - `JINA_API_KEY`: Para generar embeddings usando `jina-embeddings-v3`.
-   - `QDRANT_URL`: La URL de tu clúster de Qdrant Cloud.
-   - `QDRANT_API_KEY`: La clave de API de Qdrant.
+   - `EMBEDDER_API_KEY`: Para generar embeddings (por defecto usa Jina AI).
+   - `VECTOR_STORE_URL`: La URL de tu clúster de base de datos vectorial (por defecto Qdrant Cloud).
+   - `VECTOR_STORE_API_KEY`: La clave de API de tu base de datos vectorial.
 
 Copia el archivo `.env.example` a `.env` y rellena las variables:
 ```bash
@@ -33,15 +33,15 @@ go1.26.5 run ./cmd/extract
 *Resultado esperado:* Se creará el archivo `data/stdlib_docs.jsonl`.
 
 ### Paso 2: Ingestión
-Lee el archivo JSONL, genera los embeddings usando Jina AI y los guarda en Qdrant.
+Lee el archivo JSONL, genera los embeddings utilizando el proveedor configurado (ej. Jina AI) y los guarda en el Vector Store (ej. Qdrant).
 ```bash
-# Opcional: Puedes hacer un dry-run para verificar cuántos tokens se usarán sin gastar cuota.
+# Opcional: Puedes hacer un dry-run para verificar cuántos tokens se usarán (útil con el proveedor por defecto Jina AI).
 go run ./cmd/ingest -dry-run
 
 # Ejecución real:
 go run ./cmd/ingest
 ```
-*Nota:* El comando respeta automáticamente los límites de cuota (TPM/RPM) del tier gratuito de Jina.
+*Nota:* El comando respeta automáticamente los límites de cuota (TPM/RPM) en caso de usar el tier gratuito de Jina AI.
 
 ### Paso 3: Consulta
 Realiza preguntas en lenguaje natural sobre la biblioteca estándar.
@@ -63,7 +63,7 @@ go run ./cmd/query -package net/http -kind func "how to start a server"
 ## Troubleshooting (Errores Comunes)
 
 ### 1. Error: `missing required env vars...`
-**Síntoma:** Al correr `ingest` o `query`, el programa crashea indicando que faltan variables de entorno.
+**Síntoma:** Al correr `ingest` o `query`, el programa falla indicando que faltan variables de entorno.
 **Solución:** 
 - Asegúrate de haber creado el archivo `.env` en la raíz del proyecto.
 - Si lo creaste con otro nombre o en otra ruta, pásalo usando el flag `-env`:
@@ -83,4 +83,4 @@ go run ./cmd/query -package net/http -kind func "how to start a server"
 ### 4. Lentitud extrema durante `cmd/ingest`
 **Síntoma:** La ingestión avanza muy lento o se pausa.
 **Solución:**
-- Esto es **esperado y por diseño**. El limitador de tasa interno retrasa las peticiones para asegurar que no excedas el límite de 100,000 TPM (Tokens Por Minuto) de Jina AI. Déjalo correr en segundo plano; eventualmente terminará de forma segura.
+- Esto puede ser **esperado y por diseño**. Si usas el proveedor Jina AI gratuito, el limitador de tasa interno retrasa las peticiones para asegurar que no excedas el límite de 100,000 TPM (Tokens Por Minuto). Déjalo correr en segundo plano; eventualmente terminará de forma segura.

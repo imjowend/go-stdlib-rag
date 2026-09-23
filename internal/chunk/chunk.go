@@ -1,5 +1,5 @@
-// Package chunk builds the embedding document text and Qdrant payload for a
-// single stdlib symbol, following the "one symbol = one chunk" strategy.
+// Package chunk construye el texto del documento para el embedding y los metadatos (payload)
+// para Qdrant para un solo símbolo de la stdlib, siguiendo la estrategia "un símbolo = un fragmento".
 package chunk
 
 import (
@@ -11,36 +11,39 @@ import (
 )
 
 const (
-	// MaxDocTokens is a defensive cap on a single chunk's estimated tokens,
-	// well under jina-embeddings-v3's 8192-token context limit. In practice
-	// only the giant syscall const/var block exceeds this.
+	// MaxDocTokens es un límite defensivo estimado sobre la cantidad de tokens de un chunk,
+	// bien por debajo del límite de contexto de 8192 tokens de jina-embeddings-v3.
+	// En la práctica, solo el gigante bloque const/var de syscall supera este valor.
 	MaxDocTokens = 6000
 
-	// charsPerToken is a conservative chars-per-token ratio. It intentionally
-	// OVER-estimates tokens so the rate limiter stays safely under Jina's TPM.
+	// charsPerToken es un ratio conservador de caracteres-por-token.
+	// Intencionadamente SOBREESTIMA los tokens para que el limitador de tasa se mantenga a salvo
+	// debajo del TPM (Tokens Per Minute) de Jina.
 	charsPerToken = 3.5
 )
 
-// EstimateTokens returns a conservative token estimate for s.
+// EstimateTokens devuelve una estimación conservadora del número de tokens de la cadena s.
 func EstimateTokens(s string) int {
 	return int(float64(len(s))/charsPerToken) + 1
 }
 
-// BuildText renders the embedding document for a symbol using a uniform
-// template. The package name and signature go first to anchor the symbol
-// semantically; the doc comment and runnable examples follow.
+// BuildText renderiza el texto para el embedding de un símbolo utilizando una
+// plantilla uniforme. El nombre del paquete y la firma (signature) van primero
+// para anclar semánticamente el símbolo; el comentario de documentación y los ejemplos
+// ejecutables le siguen a continuación.
 //
-// If the rendered text would exceed MaxDocTokens, ONLY the signature is
-// truncated (the doc comment is always preserved). This is a deliberate,
-// accepted trade-off that in practice affects a single symbol: the huge
-// syscall const block. A query about a specific constant beyond the cut point
-// may therefore retrieve an incomplete chunk. This is intentional, not a bug.
+// Si el texto resultante superaría MaxDocTokens, ÚNICAMENTE la firma (signature) es
+// truncada (el comentario de documentación siempre se preserva íntegro). Este es un
+// sacrificio deliberado que en la práctica solo afecta a un solo símbolo: el enorme
+// bloque de constantes de syscall. Por lo tanto, una consulta sobre una constante
+// específica más allá del punto de corte podría recuperar un fragmento (chunk) incompleto.
+// Esto es intencional, no es un error (bug).
 func BuildText(s docmodel.Symbol) (text string, truncated bool) {
 	text = render(s, s.Signature)
 	if EstimateTokens(text) <= MaxDocTokens {
 		return text, false
 	}
-	// Compute how many characters to trim from the signature to fit the cap.
+	// Calcular cuántos caracteres truncar de la firma para respetar el límite de tokens.
 	overflowTokens := EstimateTokens(text) - MaxDocTokens
 	trimChars := int(float64(overflowTokens)*charsPerToken) + 64 // small safety margin
 	sig := s.Signature
@@ -83,10 +86,10 @@ func render(s docmodel.Symbol, signature string) string {
 	return b.String()
 }
 
-// Payload returns the metadata stored alongside each vector in Qdrant.
-// The fields package, symbol_name, kind, and has_example are used for
-// filtering in queries; recv, signature, and doc are stored so query
-// results can be displayed without re-reading the JSONL.
+// Payload devuelve los metadatos almacenados junto a cada vector en la base de datos (Qdrant).
+// Los campos package, symbol_name, kind, y has_example son utilizados para el filtrado
+// en las búsquedas; recv, signature, y doc se almacenan para poder mostrar directamente
+// los resultados de búsqueda sin necesidad de re-leer el archivo JSONL.
 func Payload(s docmodel.Symbol) map[string]any {
 	return map[string]any{
 		"package":     s.Package,
@@ -99,11 +102,12 @@ func Payload(s docmodel.Symbol) map[string]any {
 	}
 }
 
-// namespace is a fixed UUID namespace used to derive deterministic point IDs.
+// namespace es un UUID constante usado como espacio de nombres para derivar IDs determinísticos de manera segura.
 var namespace = [16]byte{0x67, 0x6f, 0x2d, 0x73, 0x74, 0x64, 0x6c, 0x69, 0x62, 0x2d, 0x72, 0x61, 0x67, 0x00, 0x00, 0x01}
 
-// PointID returns a deterministic UUIDv5-style ID for a symbol so that
-// re-running ingest upserts (rather than duplicates) the same point.
+// PointID devuelve un ID tipo UUIDv5 de forma determinística para un símbolo,
+// para asegurar que al volver a ejecutar la ingesta se actualice (upsert) en lugar
+// de duplicar el mismo punto vectorial (point).
 func PointID(s docmodel.Symbol) string {
 	key := s.Package + "|" + s.Kind + "|" + s.Recv + "|" + s.Name
 	h := sha1.Sum(append(namespace[:], []byte(key)...))

@@ -1,5 +1,5 @@
-// Package jina is a minimal client for the Jina AI embeddings API
-// (jina-embeddings-v3), using only the standard library.
+// Package jina es un cliente mínimo para la API de embeddings de Jina AI
+// (jina-embeddings-v3), utilizando únicamente la biblioteca estándar de Go.
 package jina
 
 import (
@@ -18,25 +18,25 @@ const (
 	endpoint = "https://api.jina.ai/v1/embeddings"
 	model    = "jina-embeddings-v3"
 
-	// TaskPassage is the task type for indexing documents (asymmetric retrieval).
+	// TaskPassage es el tipo de tarea (task) para indexar documentos (búsqueda asimétrica).
 	TaskPassage = "retrieval.passage"
 
-	// TaskQuery is the task type for the search query (asymmetric retrieval).
+	// TaskQuery es el tipo de tarea para la consulta de búsqueda (búsqueda asimétrica).
 	TaskQuery = "retrieval.query"
 
-	// Dim is the default output dimension of jina-embeddings-v3.
+	// Dim es la dimensión de salida por defecto del modelo jina-embeddings-v3.
 	Dim = 1024
 
 	maxRetries = 5
 )
 
-// Client talks to the Jina embeddings API.
+// Client interactúa con la API de embeddings de Jina.
 type Client struct {
 	apiKey string
 	http   *http.Client
 }
 
-// New returns a Client authenticated with the given API key.
+// New devuelve un nuevo Client autenticado con la clave API proporcionada.
 func New(apiKey string) *Client {
 	return &Client{
 		apiKey: apiKey,
@@ -62,9 +62,10 @@ type embedResponse struct {
 	} `json:"usage"`
 }
 
-// Embed returns one vector per input text for the given task. It retries on
-// 429 and 5xx responses with exponential backoff (honoring Retry-After).
-// The second return value is the number of tokens billed by the API.
+// Embed genera y devuelve un vector por cada texto de entrada para el task especificado.
+// Realiza reintentos automáticos en caso de recibir respuestas 429 (Too Many Requests) o 5xx,
+// usando retroceso exponencial (exponential backoff) y respetando la cabecera Retry-After.
+// El segundo valor devuelto es la cantidad total de tokens facturados por la API.
 func (c *Client) Embed(ctx context.Context, task string, texts []string) ([][]float32, int, error) {
 	if len(texts) == 0 {
 		return nil, 0, nil

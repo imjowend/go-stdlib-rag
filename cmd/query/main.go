@@ -1,17 +1,18 @@
-// Command query answers a natural-language question about the Go standard
-// library. It embeds the question with Jina (task=retrieval.query), searches
-// the go_stdlib_docs collection in Qdrant, and prints the most relevant
-// symbols with their metadata (package, symbol_name, kind, has_example) and
-// content (signature, doc, and runnable example if any).
+// Comando query responde a una pregunta en lenguaje natural sobre la librería
+// estándar de Go. Utiliza Jina para convertir la pregunta en un vector
+// (tarea=retrieval.query), busca en la colección go_stdlib_docs en Qdrant e
+// imprime los símbolos más relevantes con sus metadatos (paquete, nombre del
+// símbolo, tipo, tiene ejemplo) y contenido (firma, documentación y ejemplo
+// ejecutable si existe).
 //
-// The question is read from the command-line arguments or, if none are given,
-// from stdin:
+// La pregunta se lee de los argumentos de la línea de comandos o, si no se
+// proporcionan, desde la entrada estándar (stdin):
 //
 //	go run ./cmd/query "how do I use context.WithTimeout"
 //	echo "how do I use context.WithTimeout" | go run ./cmd/query
 //
-// Examples are shown by reading the local data/stdlib_docs.jsonl (which is
-// gitignored); regenerate it with `go1.26.5 run ./cmd/extract` if missing.
+// Los ejemplos se muestran leyendo el archivo local data/stdlib_docs.jsonl (el cual
+// está ignorado por git); regenerarlo con `go1.26.5 run ./cmd/extract` si falta.
 package main
 
 import (
@@ -23,17 +24,20 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/imjowend/go-stdlib-rag/internal/chunk"
 	"github.com/imjowend/go-stdlib-rag/internal/config"
 	"github.com/imjowend/go-stdlib-rag/internal/docmodel"
 	"github.com/imjowend/go-stdlib-rag/internal/jina"
 	"github.com/imjowend/go-stdlib-rag/internal/qdrant"
+	"github.com/imjowend/go-stdlib-rag/internal/rag"
 )
 
-// maxExampleLines caps how many lines of an example (code or output) we print,
-// so a huge example does not flood the terminal.
+// maxExampleLines limita cuántas líneas de un ejemplo (código o salida) imprimimos,
+// para que un ejemplo muy largo no sature la terminal.
 const maxExampleLines = 40
 
 func main() {
@@ -46,7 +50,7 @@ func main() {
 	jsonlPath := flag.String("jsonl", "data/stdlib_docs.jsonl", "path to the extracted JSONL (for showing examples)")
 	flag.Parse()
 
-	// Question from args, or from stdin if no args were given.
+	// Pregunta desde los argumentos, o desde stdin si no se dieron argumentos.
 	question := strings.TrimSpace(strings.Join(flag.Args(), " "))
 	if question == "" {
 		b, _ := io.ReadAll(os.Stdin)
@@ -56,8 +60,8 @@ func main() {
 		log.Fatalf("no question provided: pass it as arguments or via stdin")
 	}
 
-	// Early, explicit validation: cmd/query depends on the JSONL to show
-	// examples, but it is gitignored (generated output). Fail clearly.
+	// Validación temprana y explícita: cmd/query depende del JSONL para mostrar
+	// ejemplos, pero está ignorado por git (salida generada). Fallar claramente.
 	if _, err := os.Stat(*jsonlPath); err != nil {
 		log.Fatalf("%s not found: run cmd/extract first (e.g. `go1.26.5 run ./cmd/extract`)", *jsonlPath)
 	}
@@ -71,12 +75,16 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	ctx := context.Background()
-	jc := jina.New(cfg.JinaAPIKey)
-	qc := qdrant.New(cfg.QdrantURL, cfg.QdrantAPIKey)
+	// Crear un contexto interceptando señales del sistema operativo (Graceful Shutdown).
+	// Permite cancelar peticiones bloqueantes o muy largas pulsando Ctrl+C.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	// Build the optional payload filter and ensure its indexes exist (only
-	// when a filter is actually requested; otherwise no extra Qdrant call).
+	var embedder rag.Embedder = jina.New(cfg.EmbedderAPIKey)
+	var store rag.VectorStore = qdrant.New(cfg.VectorStoreURL, cfg.VectorStoreAPIKey)
+
+	// Construir el filtro opcional de payload y asegurarse de que sus índices existan
+	// (únicamente si se solicitó un filtro explícito; de otro modo no hay llamadas extra).
 	filter := buildFilter(*pkg, *kind, *hasExample)
 	if filter != nil {
 		fields := map[string]string{}
@@ -89,22 +97,26 @@ func main() {
 		if *hasExample {
 			fields["has_example"] = "bool"
 		}
-		created, err := qc.EnsurePayloadIndex(ctx, cfg.Collection, fields)
-		if err != nil {
-			log.Fatalf("ensuring payload indexes: %v", err)
-		}
-		if len(created) > 0 {
-			log.Printf("created payload indexes: %s", strings.Join(created, ", "))
+		qc, ok := store.(*qdrant.Client)
+		if ok {
+			created, err := qc.EnsurePayloadIndex(ctx, cfg.Collection, fields)
+			if err != nil {
+				log.Fatalf("ensuring payload indexes: %v", err)
+			}
+			if len(created) > 0 {
+				log.Printf("created payload indexes: %s", strings.Join(created, ", "))
+			}
 		}
 	}
 
-	// Embed the query using the asymmetric retrieval query adapter.
-	vectors, _, err := jc.Embed(ctx, jina.TaskQuery, []string{question})
+	// Generar el embedding (vector) para la consulta usando la tarea específica "retrieval.query".
+	vectors, _, err := embedder.Embed(ctx, jina.TaskQuery, []string{question})
 	if err != nil {
 		log.Fatalf("embedding query: %v", err)
 	}
 
-	results, err := qc.Search(ctx, cfg.Collection, vectors[0], *k, filter)
+	// Buscar en la base de datos (con el filtro opcional).
+	results, err := store.Search(ctx, cfg.Collection, vectors[0], *k, filter)
 	if err != nil {
 		log.Fatalf("searching: %v", err)
 	}
@@ -116,8 +128,8 @@ func main() {
 	printResults(question, results, examples)
 }
 
-// loadExamples reads the JSONL and indexes each symbol's examples by the same
-// deterministic point ID used at ingest time, so results can be enriched.
+// loadExamples lee el archivo JSONL e indexa los ejemplos de cada símbolo usando
+// el mismo ID de punto determinista usado en el momento de la ingesta.
 func loadExamples(path string) (map[string][]docmodel.Example, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -140,8 +152,8 @@ func loadExamples(path string) (map[string][]docmodel.Example, error) {
 	return out, sc.Err()
 }
 
-// buildFilter assembles a Qdrant "must" filter from the requested flags, or
-// returns nil if no filter was requested.
+// buildFilter ensambla un filtro "must" de Qdrant a partir de las flags solicitadas,
+// o devuelve nil si no se solicitó ningún filtro.
 func buildFilter(pkg, kind string, hasExample bool) map[string]any {
 	var must []map[string]any
 	if pkg != "" {
@@ -159,8 +171,8 @@ func buildFilter(pkg, kind string, hasExample bool) map[string]any {
 	return map[string]any{"must": must}
 }
 
-// printResults outputs the search results to stdout in a human-readable format.
-func printResults(question string, results []qdrant.SearchResult, examples map[string][]docmodel.Example) {
+// printResults imprime los resultados de la búsqueda en stdout en un formato legible para humanos.
+func printResults(question string, results []rag.SearchResult, examples map[string][]docmodel.Example) {
 	fmt.Printf("Query: %s\n%d results\n\n", question, len(results))
 	if len(results) == 0 {
 		fmt.Println("(no matches)")
@@ -202,7 +214,7 @@ func printResults(question string, results []qdrant.SearchResult, examples map[s
 }
 
 // printJSON outputs the search results to stdout as a JSON array.
-func printJSON(results []qdrant.SearchResult, examples map[string][]docmodel.Example) {
+func printJSON(results []rag.SearchResult, examples map[string][]docmodel.Example) {
 	type hit struct {
 		ID       string             `json:"id"`
 		Score    float32            `json:"score"`

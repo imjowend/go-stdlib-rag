@@ -1,9 +1,9 @@
-// Command ingest reads data/stdlib_docs.jsonl, builds one embedding document
-// per symbol, embeds them via the Jina API (jina-embeddings-v3) and upserts
-// them into a Qdrant Cloud collection with metadata payload for filtering.
+// Comando ingest procesa un archivo data/stdlib_docs.jsonl, construye un documento de
+// embedding por cada símbolo, los vectoriza vía la API de Jina (jina-embeddings-v3)
+// y los inserta en una colección de Qdrant Cloud con metadatos para filtrado.
 //
-// Use -dry-run to validate the whole pipeline offline (no Jina/Qdrant calls,
-// no token spend) before running the real ingestion.
+// Use -dry-run para validar toda la tubería offline (sin llamadas a Jina/Qdrant,
+// sin consumo de tokens) antes de ejecutar la ingesta real.
 package main
 
 import (
@@ -13,32 +13,35 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/imjowend/go-stdlib-rag/internal/chunk"
 	"github.com/imjowend/go-stdlib-rag/internal/config"
 	"github.com/imjowend/go-stdlib-rag/internal/docmodel"
 	"github.com/imjowend/go-stdlib-rag/internal/jina"
 	"github.com/imjowend/go-stdlib-rag/internal/qdrant"
+	"github.com/imjowend/go-stdlib-rag/internal/rag"
 )
 
 func main() {
-	in := flag.String("in", "data/stdlib_docs.jsonl", "input JSONL path")
-	envPath := flag.String("env", ".env", "path to .env file")
-	batchSize := flag.Int("batch", 32, "symbols per Jina request")
-	maxReqTokens := flag.Int("req-tokens", 7000, "max estimated tokens per Jina request")
-	tpm := flag.Int("tpm", 90000, "target tokens-per-minute ceiling (safety margin under Jina's 100K)")
-	rpm := flag.Int("rpm", 90, "target requests-per-minute ceiling (safety margin under Jina's 100)")
-	limit := flag.Int("limit", 0, "process only the first N symbols (0 = all)")
-	dryRun := flag.Bool("dry-run", false, "validate pipeline offline: no Jina/Qdrant calls, no token spend")
+	in := flag.String("in", "data/stdlib_docs.jsonl", "ruta del archivo JSONL de entrada")
+	envPath := flag.String("env", ".env", "ruta al archivo .env")
+	batchSize := flag.Int("batch", 32, "símbolos por solicitud a Jina")
+	maxReqTokens := flag.Int("req-tokens", 7000, "máximo estimado de tokens por solicitud a Jina")
+	tpm := flag.Int("tpm", 90000, "límite objetivo de tokens por minuto (margen de seguridad bajo los 100K de Jina)")
+	rpm := flag.Int("rpm", 90, "límite objetivo de solicitudes por minuto (margen de seguridad bajo las 100 de Jina)")
+	limit := flag.Int("limit", 0, "procesar solo los primeros N símbolos (0 = todos)")
+	dryRun := flag.Bool("dry-run", false, "validar tubería offline: sin llamadas a Jina/Qdrant, sin consumo de tokens")
 	flag.Parse()
 
 	symbols, err := readSymbols(*in, *limit)
 	if err != nil {
-		log.Fatalf("reading %s: %v", *in, err)
+		log.Fatalf("leyendo %s: %v", *in, err)
 	}
-	log.Printf("loaded %d symbols from %s", len(symbols), *in)
+	log.Printf("cargados %d símbolos desde %s", len(symbols), *in)
 
-	// Build documents, payloads and IDs up front (pure, no network).
+	// Construir documentos, payloads y IDs por adelantado (puro, sin red).
 	type item struct {
 		text    string
 		payload map[string]any
@@ -56,41 +59,49 @@ func main() {
 		totalTokens += t
 		items[i] = item{text: text, payload: chunk.Payload(s), id: chunk.PointID(s), tokens: t}
 	}
-	log.Printf("built %d chunks | ~%d est. tokens total | %d truncated by cap", len(items), totalTokens, truncated)
+	log.Printf("construidos %d bloques | ~%d tokens est. totales | %d truncados por límite", len(items), totalTokens, truncated)
 
 	if *dryRun {
-		log.Printf("[dry-run] sample chunk (%s.%s):\n%s", symbols[0].Package, symbols[0].Name, items[0].text)
-		log.Printf("[dry-run] est. tokens=%d, id=%s", items[0].tokens, items[0].id)
-		log.Printf("[dry-run] would create/ensure Qdrant collection with dim=%d (Cosine)", jina.Dim)
-		log.Printf("[dry-run] OK: no Jina/Qdrant calls made, no tokens spent")
+		log.Printf("[dry-run] bloque de muestra (%s.%s):\n%s", symbols[0].Package, symbols[0].Name, items[0].text)
+		log.Printf("[dry-run] tokens est.=%d, id=%s", items[0].tokens, items[0].id)
+		log.Printf("[dry-run] crearía/aseguraría colección de Qdrant con dim=%d (Coseno)", jina.Dim)
+		log.Printf("[dry-run] OK: no se realizaron llamadas a Jina/Qdrant, no se gastaron tokens")
 		return
 	}
 
 	cfg, err := config.Load(*envPath)
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		log.Fatalf("configuración: %v", err)
 	}
-	ctx := context.Background()
-	jc := jina.New(cfg.JinaAPIKey)
-	qc := qdrant.New(cfg.QdrantURL, cfg.QdrantAPIKey)
+	// Configurar un contexto con cancelación (Graceful Shutdown).
+	// Esto nos permite presionar Ctrl+C para interrumpir el proceso de ingesta.
+	// La señal se propagará cancelando las peticiones a Jina y Qdrant en vuelo.
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
-	created, err := qc.EnsureCollection(ctx, cfg.Collection, jina.Dim)
+	var embedder rag.Embedder = jina.New(cfg.EmbedderAPIKey)
+	var store rag.VectorStore = qdrant.New(cfg.VectorStoreURL, cfg.VectorStoreAPIKey)
+
+	// Asegurar que la colección exista
+	log.Printf("Asegurando que la colección %q exista...", cfg.Collection)
+	created, err := store.EnsureCollection(ctx, cfg.Collection, jina.Dim)
 	if err != nil {
-		log.Fatalf("ensuring collection %q: %v", cfg.Collection, err)
+		log.Fatalf("asegurando colección %q: %v", cfg.Collection, err)
 	}
 	if created {
-		log.Printf("created Qdrant collection %q (dim=%d, Cosine)", cfg.Collection, jina.Dim)
+		log.Printf("creada colección de Qdrant %q (dim=%d, Coseno)", cfg.Collection, jina.Dim)
 	} else {
-		log.Printf("Qdrant collection %q already exists", cfg.Collection)
+		log.Printf("la colección de Qdrant %q ya existe", cfg.Collection)
 	}
 
 	lim := newLimiter(*tpm, *rpm)
 	var done, spentTokens int
 
 	for start := 0; start < len(items); {
-		// Assemble one batch honoring both the count and per-request token cap.
+		// Ensamblar un lote respetando el conteo y el límite de tokens por solicitud.
 		end := start
 		batchTokens := 0
+		batch := items[start:end]
 		for end < len(items) && end-start < *batchSize {
 			nt := items[end].tokens
 			if end > start && batchTokens+nt > *maxReqTokens {
@@ -99,26 +110,28 @@ func main() {
 			batchTokens += nt
 			end++
 		}
+		batch = items[start:end]
 
 		texts := make([]string, 0, end-start)
 		for i := start; i < end; i++ {
 			texts = append(texts, items[i].text)
 		}
 
-		lim.wait(batchTokens) // pace to stay under TPM/RPM
+		lim.wait(batchTokens) // pace para mantenerse bajo TPM/RPM
 
-		vectors, used, err := jc.Embed(ctx, jina.TaskPassage, texts)
+		vectors, tokens, err := embedder.Embed(ctx, jina.TaskPassage, texts)
 		if err != nil {
-			log.Fatalf("embedding batch [%d:%d]: %v", start, end, err)
+			log.Fatalf("lote de embedding [%d:%d]: %v", start, end, err)
 		}
-		spentTokens += used
+		spentTokens += tokens
 
-		points := make([]qdrant.Point, 0, len(vectors))
+		// Construir puntos para Qdrant
+		points := make([]rag.Point, 0, len(vectors))
 		for i, v := range vectors {
-			it := items[start+i]
-			points = append(points, qdrant.Point{ID: it.id, Vector: v, Payload: it.payload})
+			it := batch[i]
+			points = append(points, rag.Point{ID: it.id, Vector: v, Payload: it.payload})
 		}
-		if err := qc.Upsert(ctx, cfg.Collection, points); err != nil {
+		if err := store.Upsert(ctx, cfg.Collection, points); err != nil {
 			log.Fatalf("upserting batch [%d:%d]: %v", start, end, err)
 		}
 
